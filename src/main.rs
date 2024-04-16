@@ -65,15 +65,15 @@ async fn generate_short_url(db_connection: &State<PgPool>, shorten_url_body: Jso
         return Err(Status::BadRequest);
     }
 
-    let mut short_url:Option<String> = db::get_short_url_if_exists(&final_original_url, db_connection).await;
-    if let None = short_url {
+    let mut short_url = db::get_short_url_if_exists(&final_original_url, db_connection).await;
+    if let Err(_) = short_url {
 
         let unique_id = get_unique_id();
         let generated_short_url =  encode_to_base_62(unique_id as u64);
         
         db::add_url_entry(unique_id, &final_original_url, &generated_short_url, db_connection).await.unwrap();
 
-        short_url = Some(generated_short_url);
+        short_url = Ok(generated_short_url);
     }
     return Ok(json!({"short_url": format!("{}",append_domain_name_to(&short_url.unwrap())), "long_url" : final_original_url}));
 }
@@ -105,7 +105,7 @@ async fn redirect_to_original_url(connection_pool: &State<PgPool>, cache_connect
 #[get("/visits/<short_url>")]
 async fn get_number_of_visits(short_url: &str, pool: &State<PgPool>) -> Result<Value, Status>{
     let visits = db::get_url_visit(short_url, pool).await;
-    if let None = visits {
+    if let Err(_) = visits {
         return Err(Status::NotFound);
     }
     return Ok(json!({"visits": visits.unwrap()}));

@@ -38,17 +38,17 @@ pub async fn get_original_url(short_url: &str, pool: &PgPool) -> Result<String, 
     return Ok(original_url);
 }
 
-pub async fn get_short_url_if_exists(original_url: &str, pool: &PgPool) -> Option<String>{
+pub async fn get_short_url_if_exists(original_url: &str, pool: &PgPool) -> Result<String, Error>{
     let result = sqlx::query("SELECT * FROM url_table WHERE original_url = $1")
         .bind(original_url)
         .fetch_all(pool).await;
     
     let rows = result.unwrap();
     if rows.len() == 0 {
-        return None;
+        return Err(Error::RowNotFound);
     }
 
-    return Some(rows[0].get(2));
+    return Ok(rows[0].get(2));
 }
 
 pub async fn increment_url_visit(short_url: &str, pool: &PgPool) -> Result<PgQueryResult, Error> {
@@ -59,15 +59,15 @@ pub async fn increment_url_visit(short_url: &str, pool: &PgPool) -> Result<PgQue
     return result;
 }
 
-pub async fn get_url_visit(short_url: &str, pool: &PgPool) -> Option<i32> {
+pub async fn get_url_visit(short_url: &str, pool: &PgPool) -> Result<i32, Error> {
     let result = sqlx::query("SELECT clicks FROM url_table WHERE short_url = $1")
     .bind(short_url)
     .fetch_all(pool).await;
 
     let rows = result.unwrap();
     if rows.len() == 0 {
-        return None;
+        return Err(Error::RowNotFound);
     }
 
-    return Some(rows[0].get(0));
+    return Ok(rows[0].get(0));
 }
