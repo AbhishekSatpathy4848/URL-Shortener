@@ -1,0 +1,20 @@
+[package]
+name = "url-shortener-rust"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+rocket = {version = "0.5.0-rc.1", features = ["json"] }
+base62 = "2.0.2"
+tokio = { version = "1.0.1", features = ["full"] }
+sqlx = { version = "0.7.4", features = ["postgres", "runtime-tokio-rustls"] }
+dotenv = "0.15.0"
+rs-snowflake = "0.6.0"
+serde = "1.0"
+serde_json = "1.0"
+serde_derive = "1.0"
+redis = {version = "0.25.3", features = ["tokio-comp"]}
+uriparse = "0.6.4"
+url = "2.2"
