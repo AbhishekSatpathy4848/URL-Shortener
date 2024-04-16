@@ -40,6 +40,18 @@ fn append_domain_name_to(short_url: &str) -> String{
     return format!("{}/{}", domain_name, short_url);
 }
 
+fn get_PORT_number() -> u16 {
+    dotenv().ok();
+    let port = env::var("PORT").expect("PORT must be set");
+    return port.parse::<u16>().unwrap();
+}
+
+fn get_IP_address() -> String {
+    dotenv().ok();
+    let ip_address = env::var("IP_ADDRESS").expect("IP_ADDRESS must be set");
+    return ip_address;
+}
+
 fn check_valid_url(url: &str) -> bool {
     match url::Url::parse(url) {
         Ok(parsed_url) => {
@@ -116,7 +128,10 @@ pub async fn rocket() -> _ {
     let db_connection: PgPool = db::establish_connection().await;
     let cache_connection: redis::aio::MultiplexedConnection = cache::establish_connection().await;
     let cache_connection_arc = std::sync::Arc::new(Mutex::new(cache_connection));
+    let port = get_PORT_number();
+    let ip_address = get_IP_address();
     rocket::build()
+    .configure(rocket::Config::figment().merge(("port", port)).merge(("address", ip_address)))
     .manage(db_connection)
     .manage(cache_connection_arc)
     .mount("/",routes![generate_short_url, redirect_to_original_url, get_number_of_visits])
