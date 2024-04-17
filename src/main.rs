@@ -34,19 +34,24 @@ fn get_unique_id() -> i64 {
    id_generator.real_time_generate()
 }
 
-fn append_domain_name_to(short_url: &str) -> String{
+fn get_domain_name() -> String{
     dotenv().ok();
     let domain_name = env::var("DOMAIN_NAME").expect("DOMAIN_NAME must be set");
+    return domain_name;
+}
+
+fn append_domain_name_to(short_url: &str) -> String{
+    let domain_name = get_domain_name();
     return format!("{}/{}", domain_name, short_url);
 }
 
-fn get_PORT_number() -> u16 {
+fn get_port_number() -> u16 {
     dotenv().ok();
     let port = env::var("PORT").expect("PORT must be set");
     return port.parse::<u16>().unwrap();
 }
 
-fn get_IP_address() -> String {
+fn get_ip_address() -> String {
     dotenv().ok();
     let ip_address = env::var("IP_ADDRESS").expect("IP_ADDRESS must be set");
     return ip_address;
@@ -90,33 +95,37 @@ async fn generate_short_url(db_connection: &State<PgPool>, shorten_url_body: Jso
     return Ok(json!({"short_url": format!("{}",append_domain_name_to(&short_url.unwrap())), "long_url" : final_original_url}));
 }
 
-#[get("/<short_url>")]
-async fn redirect_to_original_url(connection_pool: &State<PgPool>, cache_connection: &State<Arc<Mutex<MultiplexedConnection>>>, short_url: &str) -> Result<Redirect, Status> {
+#[get("/<short_url_hash>")]
+async fn redirect_to_original_url(connection_pool: &State<PgPool>, cache_connection: &State<Arc<Mutex<MultiplexedConnection>>>, short_url_hash: &str) -> Result<Redirect, Status> {
     let mut cache_connection_mutex: rocket::futures::lock::MutexGuard<'_, MultiplexedConnection> = cache_connection.lock().await;
-    let original_url_cache = cache::read_from_cache(short_url, &mut cache_connection_mutex).await;
+    let original_url_cache = cache::read_from_cache(short_url_hash, &mut cache_connection_mutex).await;
 
     if let Ok(url) = original_url_cache {
-        let _ = db::increment_url_visit(short_url, connection_pool).await;
+        let _ = db::increment_url_visit(short_url_hash, connection_pool).await;
 
         return Ok(Redirect::found(url));
     }
 
-    let original_url_db = db::get_original_url(short_url, connection_pool).await;
+    let original_url_db = db::get_original_url(short_url_hash, connection_pool).await;
 
     if original_url_db.is_err() {
         return Err(Status::NotFound);
     }
 
     let url = original_url_db.unwrap();
-    cache::write_to_cache(short_url, &url, &mut cache_connection_mutex).await.unwrap();
-    let _ = db::increment_url_visit(short_url, connection_pool).await;
+    cache::write_to_cache(short_url_hash, &url, &mut cache_connection_mutex).await.unwrap();
+    let _ = db::increment_url_visit(short_url_hash, connection_pool).await;
 
     return Ok(Redirect::found(url));
 }
 
 #[get("/visits/<short_url>")]
 async fn get_number_of_visits(short_url: &str, pool: &State<PgPool>) -> Result<Value, Status>{
-    let visits = db::get_url_visit(short_url, pool).await;
+    let short_url_hash = short_url.strip_prefix(format!("{}/visits/", get_domain_name()).as_str());
+    if short_url_hash.is_none() {
+        return Err(Status::BadRequest);
+    }
+    let visits = db::get_url_visit(short_url_hash.unwrap(), pool).await;
     if let Err(_) = visits {
         return Err(Status::NotFound);
     }
@@ -128,8 +137,8 @@ pub async fn rocket() -> _ {
     let db_connection: PgPool = db::establish_connection().await;
     let cache_connection: redis::aio::MultiplexedConnection = cache::establish_connection().await;
     let cache_connection_arc = std::sync::Arc::new(Mutex::new(cache_connection));
-    let port = get_PORT_number();
-    let ip_address = get_IP_address();
+    let port = get_port_number();
+    let ip_address = get_ip_address();
     rocket::build()
     .configure(rocket::Config::figment().merge(("port", port)).merge(("address", ip_address)))
     .manage(db_connection)
