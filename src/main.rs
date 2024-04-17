@@ -21,6 +21,11 @@ struct ShortenUrlBody {
     original_url: String,
 }
 
+#[derive(Deserialize)]
+struct ShortUrlClicksBody {
+    short_url: String,
+}
+
 fn encode_to_base_62(unique_id: u64) -> String {
     base62::encode(unique_id)
 }
@@ -57,8 +62,12 @@ fn get_ip_address() -> String {
     return ip_address;
 }
 
+fn parse_url(url:&str) -> Result<url::Url, url::ParseError> {
+    return url::Url::parse(url);
+}
+
 fn check_valid_url(url: &str) -> bool {
-    match url::Url::parse(url) {
+    match parse_url(url) {
         Ok(parsed_url) => {
             if parsed_url.scheme() == "https" || parsed_url.scheme() == "http" {
                return true;
@@ -71,13 +80,21 @@ fn check_valid_url(url: &str) -> bool {
     }
 }
 
+fn attach_base_if_not_present(url: String) -> String {
+    let mut final_url = url;
+    if !(final_url.starts_with("http://") || final_url.starts_with("https://")){
+        final_url = format!("https://{}", &final_url);
+    }
+    
+    final_url
+}
+
 #[post("/create", format="json", data="<shorten_url_body>")]
 async fn generate_short_url(db_connection: &State<PgPool>, shorten_url_body: Json<ShortenUrlBody>) -> Result<Value, Status> {
     let mut final_original_url:String = shorten_url_body.0.original_url.clone();
 
-    if !(final_original_url.starts_with("http://") || final_original_url.starts_with("https://")){
-        final_original_url = format!("https://{}", &final_original_url);
-    }
+    final_original_url = attach_base_if_not_present(final_original_url);
+
     if !check_valid_url(&final_original_url) {
         return Err(Status::BadRequest);
     }
@@ -119,12 +136,22 @@ async fn redirect_to_original_url(connection_pool: &State<PgPool>, cache_connect
     return Ok(Redirect::found(url));
 }
 
-#[get("/visits/<short_url>")]
-async fn get_number_of_visits(short_url: &str, pool: &State<PgPool>) -> Result<Value, Status>{
-    let short_url_hash = short_url.strip_prefix(format!("{}/visits/", get_domain_name()).as_str());
-    if short_url_hash.is_none() {
+#[post("/visits", format="json", data="<short_url_clicks_body>")]
+async fn get_number_of_visits(short_url_clicks_body: Json<ShortUrlClicksBody>, pool: &State<PgPool>) -> Result<Value, Status>{
+    
+    let mut updated_short_url = short_url_clicks_body.0.short_url.clone();
+    updated_short_url = attach_base_if_not_present(updated_short_url);
+
+    let result = parse_url(&updated_short_url);
+    if let Err(_) = result {
         return Err(Status::BadRequest);
     }
+
+    let short_url_hash = short_url_clicks_body.0.short_url.split("/").last();
+    if let None = short_url_hash {
+        return Err(Status::BadRequest);
+    }
+
     let visits = db::get_url_visit(short_url_hash.unwrap(), pool).await;
     if let Err(_) = visits {
         return Err(Status::NotFound);
