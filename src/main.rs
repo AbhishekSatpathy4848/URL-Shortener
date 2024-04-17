@@ -47,7 +47,7 @@ fn get_domain_name() -> String{
 
 fn append_domain_name_to(short_url: &str) -> String{
     let domain_name = get_domain_name();
-    return format!("{}/{}", domain_name, short_url);
+    return format!("https://{}/{}", domain_name, short_url);
 }
 
 fn get_port_number() -> u16 {
