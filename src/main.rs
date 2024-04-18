@@ -99,17 +99,12 @@ async fn generate_short_url(db_connection: &State<PgPool>, shorten_url_body: Jso
         return Err(Status::BadRequest);
     }
 
-    let mut short_url = db::get_short_url_if_exists(&final_original_url, db_connection).await;
-    if let Err(_) = short_url {
+    let unique_id = get_unique_id();
+    let generated_short_url =  encode_to_base_62(unique_id as u64);
+    
+    db::add_url_entry(unique_id, &final_original_url, &generated_short_url, db_connection).await.unwrap();
 
-        let unique_id = get_unique_id();
-        let generated_short_url =  encode_to_base_62(unique_id as u64);
-        
-        db::add_url_entry(unique_id, &final_original_url, &generated_short_url, db_connection).await.unwrap();
-
-        short_url = Ok(generated_short_url);
-    }
-    return Ok(json!({"short_url": format!("{}",append_domain_name_to(&short_url.unwrap())), "long_url" : final_original_url}));
+    return Ok(json!({"short_url": format!("{}",append_domain_name_to(&generated_short_url)), "long_url" : final_original_url}));
 }
 
 #[get("/<short_url_hash>")]
